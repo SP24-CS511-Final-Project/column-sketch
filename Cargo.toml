@@ -1,0 +1,3 @@
+[workspace]
+members = ["column-sketch-core"]
+resolver = "2"
