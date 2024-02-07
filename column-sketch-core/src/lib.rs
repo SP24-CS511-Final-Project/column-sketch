@@ -15,7 +15,7 @@ pub struct NumericColumnSketch<T> {
   unique: Vec<bool>,
 }
 
-impl<T: Ord + Eq + Copy + Num> NumericColumnSketch<T> {
+impl<T: PartialOrd + PartialEq + Copy + Num> NumericColumnSketch<T> {
   /// The implementation of constructing compression map from numeric column values.
   /// Step 1: Handle frequent values.
   ///   - Frequent values are defined as values whose frequency >= 1/C, where C is the size of the compression map (256 for now)
@@ -33,7 +33,7 @@ impl<T: Ord + Eq + Copy + Num> NumericColumnSketch<T> {
   pub fn construct(input: Vec<T>) -> NumericColumnSketch<T> {
     let _n = input.len();
     let mut input = input;
-    input.sort();
+    input.sort_by(|t1, t2| t1.partial_cmp(t2).unwrap());
 
     let _frequent_values = Self::generate_frequent_values(&input, COMPRESSION_MAP_SIZE);
 
@@ -204,6 +204,7 @@ mod tests {
   use std::collections::BTreeSet;
 
   use rand::{rngs::SmallRng, Rng, SeedableRng};
+  use rand_distr::{Distribution, StandardNormal};
   use rstest::rstest;
 
   use crate::NumericColumnSketch;
@@ -297,5 +298,15 @@ mod tests {
       expected.push(2000);
     }
     assert_eq!(expected, histogram);
+  }
+
+  #[test]
+  fn test_histogram_normal() {
+    let mut rng = rand::thread_rng();
+    let mut sample: Vec<f64> = StandardNormal.sample_iter(&mut rng).take(100000).collect();
+    sample.sort_by(|f1, f2| f1.partial_cmp(f2).unwrap());
+
+    let histogram = NumericColumnSketch::generate_equi_depth_histogram(&sample, 1000, 100, f64::MAX);
+    println!("{:?}", histogram);
   }
 }

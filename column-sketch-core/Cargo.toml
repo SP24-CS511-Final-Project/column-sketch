@@ -8,4 +8,5 @@ num-traits = "0.2.17"
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["small_rng"] }
+rand_distr = "0.4.3"
 rstest = "0.18.2"
