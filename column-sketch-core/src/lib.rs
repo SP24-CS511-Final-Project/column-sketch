@@ -1,7 +1,7 @@
 //! This crate provides the core data structure and algorithm of [column-sketch](https://stratos.seas.harvard.edu/files/stratos/files/sketches.pdf).
 #![allow(dead_code)]
 
-use std::fmt::Display;
+use num_traits::Num;
 
 pub const COMPRESSION_MAP_SIZE: usize = 256;
 
@@ -15,7 +15,7 @@ pub struct NumericColumnSketch<T> {
   unique: Vec<bool>,
 }
 
-impl<T: Ord + Eq + Copy + Display> NumericColumnSketch<T> {
+impl<T: Ord + Eq + Copy + Num> NumericColumnSketch<T> {
   /// The implementation of constructing compression map from numeric column values.
   /// Step 1: Handle frequent values.
   ///   - Frequent values are defined as values whose frequency >= 1/C, where C is the size of the compression map (256 for now)
@@ -28,7 +28,7 @@ impl<T: Ord + Eq + Copy + Display> NumericColumnSketch<T> {
   ///      unique code to the one with higher frequency.
   ///   2. we don't give unique code MIN or MAX in the code range.
   ///
-  /// Step 2:
+  /// Step 2: Construct equi-depth histograms between each unique codes
   ///
   pub fn construct(input: Vec<T>) -> NumericColumnSketch<T> {
     let _n = input.len();
@@ -44,7 +44,7 @@ impl<T: Ord + Eq + Copy + Display> NumericColumnSketch<T> {
   ///
   /// * `input`: Sorted input values
   /// * `c`: Number of bucket/code in the compression map
-  pub(self) fn generate_frequent_values(input: &[T], c: usize) -> Vec<FrequentValueEntry> {
+  fn generate_frequent_values(input: &[T], c: usize) -> Vec<FrequentValueEntry> {
     let mut entries = Vec::new();
     let mut start = 0;
     let mut start_value = input[start];
@@ -83,6 +83,74 @@ impl<T: Ord + Eq + Copy + Display> NumericColumnSketch<T> {
 
     entries
   }
+
+  /// This function generates a histogram of given number of bucket from a slice of data, and is used for
+  /// generating histograms over slices of data between each frequent values.
+  ///
+  /// Invariant:
+  /// The input data is always between two frequent values i and j.
+  /// num_buckets = Code[j] - Code[i] - 1 >= 1
+  /// value_per_bucket = n / c
+  /// end_value = code[j], or T::MAX if the last bucket
+  ///
+  /// Returns:
+  /// A vector histogram of size num_buckets
+  fn generate_equi_depth_histogram(
+    input: &[T],
+    num_buckets: usize,
+    value_per_bucket: usize,
+    end_value: T,
+  ) -> Vec<T> {
+    // Consider an extreme case:
+    // n = 25600, c = 256 (hence value_per_bucket = 100)
+    // index [0-200) are value 1 -> code 1
+    // index [201-3000] are value 10 -> code 16
+    // between these two frequent values, there is [2-15], which is 14 buckets
+    // but no values.
+    // In this case we fill every bucket with 10,
+    // and when assigning values, we will do a special casing on frequent values to distinguish
+    // the buckets.
+    if input.len() == 0 {
+      return vec![end_value; num_buckets];
+    }
+
+    let mut buckets = Vec::with_capacity(num_buckets);
+
+    let mut prev_value = input[0];
+    let mut prev_occurrence = 1;
+    for &value in input.iter().skip(1) {
+      if value == prev_value {
+        prev_occurrence += 1;
+        continue;
+      }
+
+      if prev_occurrence >= value_per_bucket {
+        buckets.push(prev_value);
+        prev_value = value;
+        prev_occurrence = 1;
+      } else {
+        prev_value = value;
+        prev_occurrence += 1;
+      }
+    }
+
+    // Handle last values
+    if prev_occurrence >= value_per_bucket {
+      buckets.push(prev_value);
+    }
+
+    assert!(buckets.len() <= num_buckets, "Actual constructed bucket length {} > num_buckets {}. Please check the integrity of input data", buckets.len(), num_buckets);
+
+    if buckets.len() == num_buckets {
+      *buckets.last_mut().unwrap() = end_value;
+    } else {
+      while buckets.len() < num_buckets {
+        buckets.push(end_value);
+      }
+    }
+
+    buckets
+  }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -96,7 +164,7 @@ struct FrequentValueEntry {
 impl FrequentValueEntry {
   pub fn code(self, n: usize, c: usize) -> usize {
     let midpoint = (self.start + self.end) / 2;
-    (c * midpoint) / n
+    ((c as f64 * midpoint as f64) / n as f64).round() as usize
   }
 }
 
@@ -135,20 +203,18 @@ fn add_new_entry(
 mod tests {
   use std::collections::BTreeSet;
 
+  use rand::{rngs::SmallRng, Rng, SeedableRng};
   use rstest::rstest;
 
   use crate::NumericColumnSketch;
 
+  /// White-box testing for frequent value generation.
   #[rstest]
   #[case(1000, 256)]
   #[case(10000, 256)]
   #[case(20000, 256)]
   #[case(20000, 512)]
   fn test_frequent_values_sanity(#[case] dataset_size: usize, #[case] map_size: usize) {
-    use rand::rngs::SmallRng;
-    use rand::Rng;
-    use rand::SeedableRng;
-
     // frequent_occurrence = Math.floor(n / c)
     let frequent_occurrence = dataset_size / map_size + 1;
 
@@ -162,8 +228,10 @@ mod tests {
     while data.len() < dataset_size {
       let current_start = data.len();
 
-      let current_code_if_frequent =
-        map_size * ((current_start + current_start + frequent_occurrence) / 2) / dataset_size;
+      let current_code_if_frequent = (map_size as f64
+        * ((current_start + current_start + frequent_occurrence) / 2) as f64
+        / dataset_size as f64)
+        .round() as usize;
 
       let should_generate_frequent = (0..map_size - 1).contains(&current_code_if_frequent)
         && current_code_if_frequent > last_frequent_code + 1
@@ -202,5 +270,32 @@ mod tests {
 
     let expected_values: Vec<i32> = (1..=100).into_iter().collect();
     assert_eq!(expected_values, frequent_values);
+  }
+
+  #[test]
+  fn test_histogram_simple() {
+    let input = vec![1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4];
+    let histogram = NumericColumnSketch::generate_equi_depth_histogram(&input, 4, 4, 100);
+    assert_eq!(vec![1, 2, 3, 100], histogram);
+  }
+
+  #[test]
+  fn test_histogram_no_input() {
+    let input = vec![];
+    let histogram = NumericColumnSketch::generate_equi_depth_histogram(&input, 10, 5, 100);
+    assert_eq!(vec![100; 10], histogram);
+  }
+
+  #[test]
+  fn test_histogram_unique() {
+    let input: Vec<i32> = (0..=1000).into_iter().collect();
+    let histogram = NumericColumnSketch::generate_equi_depth_histogram(&input, 100, 20, 2000);
+
+    // We should fill histogram with 19, 39, ... 999 followed by all 2000
+    let mut expected: Vec<i32> = (19..=999).step_by(20).into_iter().collect();
+    while expected.len() < 100 {
+      expected.push(2000);
+    }
+    assert_eq!(expected, histogram);
   }
 }
