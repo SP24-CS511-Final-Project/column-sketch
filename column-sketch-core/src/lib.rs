@@ -306,7 +306,8 @@ mod tests {
     let mut sample: Vec<f64> = StandardNormal.sample_iter(&mut rng).take(100000).collect();
     sample.sort_by(|f1, f2| f1.partial_cmp(f2).unwrap());
 
-    let histogram = NumericColumnSketch::generate_equi_depth_histogram(&sample, 1000, 100, f64::MAX);
+    let histogram =
+      NumericColumnSketch::generate_equi_depth_histogram(&sample, 1000, 100, f64::MAX);
     println!("{:?}", histogram);
   }
 }
