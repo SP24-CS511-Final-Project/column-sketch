@@ -1,7 +1,11 @@
 //! This crate provides the core data structure and algorithm of [column-sketch](https://stratos.seas.harvard.edu/files/stratos/files/sketches.pdf).
 #![allow(dead_code)]
 
-use num_traits::Num;
+pub mod traits;
+
+use std::cmp::Ordering;
+
+use traits::Numeric;
 
 pub const COMPRESSION_MAP_SIZE: usize = 256;
 
@@ -10,34 +14,117 @@ pub const COMPRESSION_MAP_SIZE: usize = 256;
 /// Under the hood, a [`NumericColumnSketch`] is just a bucket array, where the ith value is the max
 /// value belonging to code i, so that a value is mapped to i iff arr[i-1] < value <= arr[i], and a
 /// bit vector indicating if the code is unique.
+#[derive(Debug)]
 pub struct NumericColumnSketch<T> {
   buckets: Vec<T>,
   unique: Vec<bool>,
 }
 
-impl<T: PartialOrd + PartialEq + Copy + Num> NumericColumnSketch<T> {
+impl<T: Numeric> NumericColumnSketch<T> {
+  /// Compress the given value using the column sketch compression map.
+  ///
+  /// The algorithm for compression using column sketch runs as follows:
+  /// 1. Find the smallest index i where buckets[i] > value
+  /// 2. If unique[i]: return i - 1
+  /// 3. If buckets[i - 1] == value: return i - 1
+  /// 3. Else: return i
+  /// and our value lies between the frequent value and its prev bucket's max value.
+  /// In this case the value goes to the previous bucket)
+  pub fn compress(&self, value: T) -> usize {
+    // index points to the first element which is greater than value
+    let index = self
+      .buckets
+      .binary_search_by(|element| match element.partial_cmp(&value).unwrap() {
+        Ordering::Equal => Ordering::Less,
+        ord => ord,
+      })
+      .unwrap_err();
+
+    if index == 0 {
+      return index;
+    }
+
+    // Example: buckets = [10, 20, 30, 40, 50], unqiue = [false, true, false, false, false], value = 19
+    // index will be 1, which points to 20, but since 1 is the unique code for value 20, 19 actually goes to code 0
+    let prev_index = index - 1;
+    if self.unique[index] {
+      return prev_index;
+    }
+
+    let prev_value = self.buckets[prev_index];
+    if prev_value == value {
+      return prev_index;
+    }
+
+    // buckets[index - 1] < value < buckets[index], value -> index
+    index
+  }
+
+  /// Return if a given code is a unique code
+  pub fn is_unique_code(&self, code: usize) -> bool {
+    self.unique[code]
+  }
+
   /// The implementation of constructing compression map from numeric column values.
   /// Step 1: Handle frequent values.
-  ///   - Frequent values are defined as values whose frequency >= 1/C, where C is the size of the compression map (256 for now)
-  ///   - Assume input data has size N, then a frequent value would occur at least N/C times, and hence one of the values in sorted
-  ///     list (n/c,2n/c,...,(c−1)n/c) must be that frequent value.
+  ///   - Frequent values are defined as values whose frequency >= 1/C, where C is the size of the compression map (256 as a default so that code fits in an 8-bit integer)
+  ///   - Assume input data has size N, then a frequent value would occur at least N/C times.
   ///     Once a frequent value is found, we find the midpoint position of its occurrence in the sorted list and assign code c * midpoint/n
   ///     to it.
   ///   Caveat:
   ///   1. we don't allow frequent values mapped to consecutive unique code. If both code i and i + 1 has a frequent value, we only give
   ///      unique code to the one with higher frequency.
-  ///   2. we don't give unique code MIN or MAX in the code range.
+  ///   2. we don't give unique code MIN or MAX in the code range (0 and 255 in the default setting).
   ///
   /// Step 2: Construct equi-depth histograms between each unique codes
   ///
   pub fn construct(input: Vec<T>) -> NumericColumnSketch<T> {
-    let _n = input.len();
+    let n = input.len();
+    let value_per_bucket = frequent_threshold(n, COMPRESSION_MAP_SIZE);
+
     let mut input = input;
     input.sort_by(|t1, t2| t1.partial_cmp(t2).unwrap());
 
-    let _frequent_values = Self::generate_frequent_values(&input, COMPRESSION_MAP_SIZE);
+    // Step 1: Decide frequent values -> unique codes
+    let frequent_values = Self::generate_frequent_values(&input, COMPRESSION_MAP_SIZE);
 
-    unimplemented!()
+    let mut buckets = vec![T::max_value(); COMPRESSION_MAP_SIZE];
+    let mut unique = vec![false; COMPRESSION_MAP_SIZE];
+
+    // Step 2: Construct equi-depth histogram between each frequent values
+    let mut cur_start = 0;
+    let mut last_code = 0;
+    for entry in frequent_values {
+      let value = input[entry.start];
+      let code = entry.code(n, COMPRESSION_MAP_SIZE);
+
+      // Construct histogram between the current entry and the last entry
+      let histogram_before_entry = Self::generate_equi_depth_histogram(
+        &input[cur_start..entry.start],
+        code - last_code,
+        value_per_bucket,
+        value,
+      );
+      (&mut buckets[last_code..code]).copy_from_slice(&histogram_before_entry);
+
+      // Set current code
+      buckets[code] = value;
+      unique[code] = true;
+
+      last_code = code + 1;
+      cur_start = entry.end;
+    }
+
+    // Construct last run of histogram
+    let histogram_before_entry = Self::generate_equi_depth_histogram(
+      &input[cur_start..],
+      COMPRESSION_MAP_SIZE - last_code,
+      value_per_bucket,
+      T::max_value(),
+    );
+    (&mut buckets[last_code..]).copy_from_slice(&histogram_before_entry);
+
+    NumericColumnSketch { buckets, unique }
   }
 
   /// Scan over the input data and generate all eligible frequent values
@@ -49,7 +136,7 @@ impl<T: PartialOrd + PartialEq + Copy + Num> NumericColumnSketch<T> {
     let mut start = 0;
     let mut start_value = input[start];
 
-    let threshold = input.len() / c;
+    let threshold = frequent_threshold(input.len(), c);
 
     for (end, &value) in input.iter().enumerate() {
       if value != start_value {
@@ -139,7 +226,7 @@ impl<T: PartialOrd + PartialEq + Copy + Num> NumericColumnSketch<T> {
       buckets.push(prev_value);
     }
 
-    assert!(buckets.len() <= num_buckets, "Actual constructed bucket length {} > num_buckets {}. Please check the integrity of input data", buckets.len(), num_buckets);
+    assert!(buckets.len() <= num_buckets, "Actual constructed bucket length {} > num_buckets {} (value_per_bucket={}). Please check the integrity of input data", buckets.len(), num_buckets, value_per_bucket);
 
     if buckets.len() == num_buckets {
       *buckets.last_mut().unwrap() = end_value;
@@ -183,7 +270,6 @@ fn add_new_entry(
   match entries.last().copied() {
     Some(old_entry) => {
       let old_code = old_entry.code(n, c);
-      println!("{}, {}", old_code, current_code);
       if old_code == current_code - 1 || old_code == current_code {
         let old_freq = old_entry.end - old_entry.start;
         let new_freq = new_entry.end - new_entry.start;
@@ -199,15 +285,20 @@ fn add_new_entry(
   }
 }
 
+// The threshold for a frequent value: Math.ceil(n / c)
+fn frequent_threshold(n: usize, c: usize) -> usize {
+  (n as f64 / c as f64).ceil() as usize
+}
+
 #[cfg(test)]
 mod tests {
-  use std::collections::BTreeSet;
+  use std::collections::{BTreeMap, BTreeSet};
 
   use rand::{rngs::SmallRng, Rng, SeedableRng};
   use rand_distr::{Distribution, StandardNormal};
   use rstest::rstest;
 
-  use crate::NumericColumnSketch;
+  use crate::{frequent_threshold, traits::Numeric, NumericColumnSketch, COMPRESSION_MAP_SIZE};
 
   /// White-box testing for frequent value generation.
   #[rstest]
@@ -216,8 +307,7 @@ mod tests {
   #[case(20000, 256)]
   #[case(20000, 512)]
   fn test_frequent_values_sanity(#[case] dataset_size: usize, #[case] map_size: usize) {
-    // frequent_occurrence = Math.floor(n / c)
-    let frequent_occurrence = dataset_size / map_size + 1;
+    let frequent_occurrence = frequent_threshold(dataset_size, map_size);
 
     let mut rng = SmallRng::seed_from_u64(64);
 
@@ -301,13 +391,79 @@ mod tests {
   }
 
   #[test]
-  fn test_histogram_normal() {
+  fn test_column_sketch_order_preserving() {
     let mut rng = rand::thread_rng();
-    let mut sample: Vec<f64> = StandardNormal.sample_iter(&mut rng).take(100000).collect();
-    sample.sort_by(|f1, f2| f1.partial_cmp(f2).unwrap());
+    // Sample is normally distributed f64 data with no frequent values.
+    let sample: Vec<f64> = StandardNormal.sample_iter(&mut rng).take(1000).collect();
 
-    let histogram =
-      NumericColumnSketch::generate_equi_depth_histogram(&sample, 1000, 100, f64::MAX);
-    println!("{:?}", histogram);
+    let column_sketch = NumericColumnSketch::construct(sample.clone());
+
+    verify_order_preserving(&column_sketch, &sample);
+  }
+
+  #[test]
+  fn test_column_sketch_with_frequent_values() {
+    // The dataset is constructed as follows:
+    // every data point represents a student's score ranging from 0 - 1000
+    // student has and independent probability 40% of getting 600, 20% of getting 700, 15% of getting 800,
+    // 5% of getting 900, and then the remaining 20% getting any rate uniformly in range [0 - 1000]
+    // we sample 10000 values and expect at least 600, 700, 800, and 900 to be frequent values.
+    let mut rng = rand::thread_rng();
+    let mut sample = Vec::with_capacity(10000);
+    for _ in 0..10000 {
+      let dice = rng.gen_range(0..100);
+      if dice < 40 {
+        sample.push(600);
+      } else if dice < 60 {
+        sample.push(700);
+      } else if dice < 75 {
+        sample.push(800);
+      } else if dice < 80 {
+        sample.push(900);
+      } else {
+        sample.push(rng.gen_range(0..=1000));
+      }
+    }
+
+    let mut statistics: BTreeMap<i32, i32> = BTreeMap::new();
+    for &v in &sample {
+      *statistics.entry(v).or_default() += 1;
+    }
+
+    let column_sketch = NumericColumnSketch::construct(sample.clone());
+
+    verify_order_preserving(&column_sketch, &sample);
+
+    // verify unique value
+    let threshold = frequent_threshold(10000, COMPRESSION_MAP_SIZE);
+    for (value, occurrence) in &statistics {
+      if *occurrence >= threshold as i32 {
+        let code: usize = column_sketch.compress(*value);
+        // println!("Unique code {} for frequent value {}", code, value);
+        assert!(column_sketch.is_unique_code(code));
+      } else {
+        let code: usize = column_sketch.compress(*value);
+        assert!(!column_sketch.is_unique_code(code))
+      }
+    }
+  }
+
+  fn verify_order_preserving<T: Numeric>(column_sketch: &NumericColumnSketch<T>, sample: &[T]) {
+    let codes: Vec<u8> = sample
+      .iter()
+      .map(|value| column_sketch.compress(*value) as u8)
+      .collect();
+    // Check that the map is order-preserving.
+    for (i, n1) in sample.iter().enumerate() {
+      for (j, n2) in sample.iter().enumerate() {
+        if n1 > n2 {
+          assert!(codes[i] >= codes[j]);
+        } else if n1 == n2 {
+          assert!(codes[i] == codes[j])
+        } else {
+          assert!(codes[i] <= codes[j])
+        }
+      }
+    }
   }
 }
