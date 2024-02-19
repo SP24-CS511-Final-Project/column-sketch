@@ -1,5 +1,7 @@
 # column-sketch
 
+[![ci](https://github.com/SP24-CS511-Final-Project/column-sketch/actions/workflows/build.yaml/badge.svg)](https://github.com/SP24-CS511-Final-Project/column-sketch/actions/workflows/build.yaml)
+
 This is the main repository of the final project of CS511 offered at Spring 2024 semester. 
 
 ## Project Goals
