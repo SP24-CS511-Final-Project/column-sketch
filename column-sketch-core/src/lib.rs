@@ -16,8 +16,8 @@ pub const COMPRESSION_MAP_SIZE: usize = 256;
 /// bit vector indicating if the code is unique.
 #[derive(Debug)]
 pub struct NumericColumnSketch<T> {
-  buckets: Vec<T>,
-  unique: Vec<bool>,
+  pub buckets: Vec<T>,
+  pub unique: Vec<bool>,
 }
 
 impl<T: Numeric> NumericColumnSketch<T> {
@@ -60,6 +60,13 @@ impl<T: Numeric> NumericColumnSketch<T> {
     index
   }
 
+  pub fn compress_array(&self, input: &[T]) -> Vec<u8> {
+    input
+      .iter()
+      .map(|value| self.compress(*value) as u8)
+      .collect()
+  }
+
   /// Return if a given code is a unique code
   pub fn is_unique_code(&self, code: usize) -> bool {
     self.unique[code]
@@ -79,11 +86,15 @@ impl<T: Numeric> NumericColumnSketch<T> {
   /// Step 2: Construct equi-depth histograms between each unique codes
   ///
   pub fn construct(input: Vec<T>) -> NumericColumnSketch<T> {
-    let n = input.len();
-    let value_per_bucket = frequent_threshold(n, COMPRESSION_MAP_SIZE);
-
     let mut input = input;
     input.sort_by(|t1, t2| t1.partial_cmp(t2).unwrap());
+    Self::construct_from_sorted(&input)
+  }
+
+  pub fn construct_from_sorted(sorted_input: &[T]) -> NumericColumnSketch<T> {
+    let input = sorted_input;
+    let n = input.len();
+    let value_per_bucket = frequent_threshold(n, COMPRESSION_MAP_SIZE);
 
     // Step 1: Decide frequent values -> unique codes
     let frequent_values = Self::generate_frequent_values(&input, COMPRESSION_MAP_SIZE);
