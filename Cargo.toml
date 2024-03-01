@@ -1,3 +1,10 @@
 [workspace]
-members = ["column-sketch-core"]
+members = ["column-sketch-core", "column-sketch-eval"]
 resolver = "2"
+
+[workspace.dependencies]
+rand = { version = "0.8.5", features = ["small_rng"] }
+rand_distr = "0.4.3"
+rstest = "0.18.2"
+
+column-sketch-core = { path = "column-sketch-core" }

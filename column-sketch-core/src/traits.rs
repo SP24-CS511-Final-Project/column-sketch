@@ -1,6 +1,8 @@
+use std::simd::SimdElement;
+
 /// The [`Numeric`] trait is a minimal trait describing a numeric data type that we could
 /// construct [`NumericColumnSketch`] on.
-pub trait Numeric: sealed::Sealed + Copy + PartialEq + PartialOrd {
+pub trait Numeric: sealed::Sealed + Copy + PartialEq + PartialOrd + SimdElement {
   /// The last bucket of the compression map always contains the max value of
   /// the data type so that any value greater than the max sample value has a code to fall
   /// into.

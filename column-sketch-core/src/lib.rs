@@ -1,5 +1,6 @@
 //! This crate provides the core data structure and algorithm of [column-sketch](https://stratos.seas.harvard.edu/files/stratos/files/sketches.pdf).
 #![allow(dead_code)]
+#![feature(portable_simd)]
 
 pub mod traits;
 
@@ -97,7 +98,7 @@ impl<T: Numeric> NumericColumnSketch<T> {
     let value_per_bucket = frequent_threshold(n, COMPRESSION_MAP_SIZE);
 
     // Step 1: Decide frequent values -> unique codes
-    let frequent_values = Self::generate_frequent_values(&input, COMPRESSION_MAP_SIZE);
+    let frequent_values = Self::generate_frequent_values(input, COMPRESSION_MAP_SIZE);
 
     let mut buckets = vec![T::max_value(); COMPRESSION_MAP_SIZE];
     let mut unique = vec![false; COMPRESSION_MAP_SIZE];
@@ -116,7 +117,7 @@ impl<T: Numeric> NumericColumnSketch<T> {
         value_per_bucket,
         value,
       );
-      (&mut buckets[last_code..code]).copy_from_slice(&histogram_before_entry);
+      (buckets[last_code..code]).copy_from_slice(&histogram_before_entry);
 
       // Set current code
       buckets[code] = value;
@@ -133,7 +134,7 @@ impl<T: Numeric> NumericColumnSketch<T> {
       value_per_bucket,
       T::max_value(),
     );
-    (&mut buckets[last_code..]).copy_from_slice(&histogram_before_entry);
+    (buckets[last_code..]).copy_from_slice(&histogram_before_entry);
 
     NumericColumnSketch { buckets, unique }
   }
@@ -208,7 +209,7 @@ impl<T: Numeric> NumericColumnSketch<T> {
     // In this case we fill every bucket with 10,
     // and when assigning values, we will do a special casing on frequent values to distinguish
     // the buckets.
-    if input.len() == 0 {
+    if input.is_empty() {
       return vec![end_value; num_buckets];
     }
 

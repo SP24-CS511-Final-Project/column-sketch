@@ -103,6 +103,16 @@ checksum = "98cc8fbded0c607b7ba9dd60cd98df59af97e84d24e49c8557331cfc26d301ce"
 name = "column-sketch-core"
 version = "0.1.0"
 dependencies = [
+ "rand",
+ "rand_distr",
+ "rstest",
+]
+
+[[package]]
+name = "column-sketch-eval"
+version = "0.1.0"
+dependencies = [
+ "column-sketch-core",
  "criterion",
  "rand",
  "rand_distr",
