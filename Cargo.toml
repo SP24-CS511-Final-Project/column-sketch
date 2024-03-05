@@ -1,10 +1,13 @@
 [workspace]
-members = ["column-sketch-core", "column-sketch-eval"]
+members = ["column-sketch-core", "column-sketch-eval", "column-sketch-arrow"]
 resolver = "2"
 
 [workspace.dependencies]
 rand = { version = "0.8.5", features = ["small_rng"] }
 rand_distr = "0.4.3"
 rstest = "0.18.2"
+arrow = { version = "50.0.0", features = ["prettyprint"] }
+parquet = { version = "50.0.0", features = ["experimental", "async"] }
+bytes = "1.5.0"
 
 column-sketch-core = { path = "column-sketch-core" }

@@ -1,0 +1,10 @@
+[package]
+name = "column-sketch-arrow"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arrow = { workspace = true }
+parquet = { workspace = true }
+bytes = { workspace = true }
+tokio = { version = "1.36.0", features = ["fs"] }
