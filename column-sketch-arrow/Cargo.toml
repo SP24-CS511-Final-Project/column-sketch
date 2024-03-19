@@ -8,3 +8,9 @@ arrow = { workspace = true }
 parquet = { workspace = true }
 bytes = { workspace = true }
 tokio = { version = "1.36.0", features = ["fs"] }
+clap = { version = "4.5.3", features = ["derive"] }
+anyhow = "1.0.81"
+
+[[bin]]
+name = "transform_parquet"
+path = "src/bin/transform_parquet.rs"
