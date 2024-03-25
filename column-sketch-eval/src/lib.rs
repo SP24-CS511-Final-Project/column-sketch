@@ -5,6 +5,7 @@
 #![feature(portable_simd)]
 #![feature(generic_arg_infer)]
 
+pub mod parquet;
 #[cfg(test)]
 mod test;
 pub mod util;

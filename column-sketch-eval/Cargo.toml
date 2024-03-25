@@ -5,13 +5,21 @@ edition = "2021"
 
 [dependencies]
 column-sketch-core = { workspace = true }
+futures = "0.3.30"
 rand = { workspace = true }
 rand_distr = { workspace = true }
+arrow = { workspace = true }
+parquet = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
 criterion = "0.5.1"
 
 [[bench]]
-name = "bench"
+name = "micro_benchmark"
 harness = false
+
+[[bench]]
+name = "parquet_benchmark"
