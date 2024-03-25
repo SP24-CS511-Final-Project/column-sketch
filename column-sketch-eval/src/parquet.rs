@@ -19,7 +19,10 @@ use futures::StreamExt;
 use parquet::{arrow::ParquetRecordBatchStreamBuilder, file::statistics::Statistics::Double};
 
 /// Return all the records greater than target
-pub async fn execute_plain_parquet(path: impl AsRef<Path>, target: f64) -> Result<Vec<RecordBatch>> {
+pub async fn execute_plain_parquet(
+  path: impl AsRef<Path>,
+  target: f64,
+) -> Result<Vec<RecordBatch>> {
   let file = tokio::fs::File::open(path).await?;
 
   let stream_builder = ParquetRecordBatchStreamBuilder::new(file).await?;
