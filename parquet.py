@@ -72,8 +72,11 @@ def degrade_sortedness_to_target(df: pd.DataFrame) -> None:
         block = df[idx_block_head: num_rows]
         degrade_block(block)
 
-target_sortedness = float(input("Enter the target sortedness: "))
-size_block = int(input("Enter the block size: "))
+# target_sortedness = float(input("Enter the target sortedness: "))
+# size_block = int(input("Enter the block size: "))
+target_sortedness = 0.8
+size_block = 512
+
 df = pd.DataFrame({"col": range(1000)})
 degrade_sortedness_to_target(df)
 table = pa.Table.from_pandas(df)
