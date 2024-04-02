@@ -23,7 +23,7 @@ def get_sortedness_block(block: pd.DataFrame) -> float:
                   / (math.ceil(N / 2) - 1))
     return sortedness
 
-def get_sortedness(df: pd.DataFrame, size_block=512) -> float:
+def get_sortedness(df: pd.DataFrame) -> float:
     num_rows = len(df)
     num_full_blocks = num_rows // size_block
 
@@ -44,7 +44,7 @@ def get_sortedness(df: pd.DataFrame, size_block=512) -> float:
         sum_sortedness += get_sortedness_block(block)
         return sum_sortedness / (num_full_blocks + 1)
 
-def degrade_sortedness_to(df: pd.DataFrame, target_sortedness: float) -> None:
+def degrade_sortedness_to(df: pd.DataFrame) -> None:
     # swap random value pairs in the block till reach target_sortedness
     def degrade_block(block: pd.DataFrame) -> None:
         N = len(block)
