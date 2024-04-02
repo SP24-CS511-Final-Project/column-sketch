@@ -44,6 +44,37 @@ def get_sortedness(df: pd.DataFrame, size_block=512) -> float:
         sum_sortedness += get_sortedness_block(block)
         return sum_sortedness / (num_full_blocks + 1)
 
-df = pd.DataFrame({"col": [random.uniform(0, 100) for _ in range(1000)]})
+def degrade_sortedness_to(df: pd.DataFrame, target_sortedness: float) -> None:
+    # swap random value pairs in the block till reach target_sortedness
+    def degrade_block(block: pd.DataFrame) -> None:
+        N = len(block)
+        # prevent infinite loop in case target can't be reach
+        for _ in range(10000):
+            sortedness_block = get_sortedness_block(block)
+            if sortedness_block <= target_sortedness:
+                return
+            idx1 = random.randint(0, N - 1)
+            idx2 = random.randint(0, N - 1)
+            block.iloc[idx1]["col"], block.iloc[idx2]["col"] = block.iloc[idx2]["col"], block.iloc[idx1]["col"]
+
+    num_rows = len(df)
+    num_full_blocks = num_rows // size_block
+
+    # degrade each block's sortedness to target
+    idx_block_head = 0  # inclusive
+    for _ in range(num_full_blocks):
+        idx_block_tail = idx_block_head + size_block    # exclusive
+        block = df[idx_block_head: idx_block_tail]
+        degrade_block(block)
+        idx_block_head = idx_block_tail
+
+    if num_rows % size_block != 0:
+        block = df[idx_block_head: num_rows]
+        degrade_block(block)
+
+target_sortedness = float(input("Enter the target sortedness: "))
+size_block = int(input("Enter the block size: "))
+df = pd.DataFrame({"col": range(1000)})
+
 table = pa.Table.from_pandas(df)
 pq.write_table(table, "example.parquet")
