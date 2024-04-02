@@ -7,7 +7,8 @@ import math
 def print_pq(table_name: str) -> None:
     table = pq.read_table(table_name)
     df = table.to_pandas()
-    print(df)
+    for i in range(len(df)):
+        print(df["col"][i])
 
 def get_sortedness_block(block: pd.DataFrame) -> float:
     N = len(block)
@@ -55,7 +56,7 @@ def degrade_sortedness_to_target(df: pd.DataFrame) -> None:
                 return
             idx1 = random.randint(0, N - 1)
             idx2 = random.randint(0, N - 1)
-            block.iloc[idx1]["col"], block.iloc[idx2]["col"] = block.iloc[idx2]["col"], block.iloc[idx1]["col"]
+            block.iloc[idx1], block.iloc[idx2] = block.iloc[idx2], block.iloc[idx1].copy()
 
     num_rows = len(df)
     num_full_blocks = num_rows // size_block
@@ -82,3 +83,4 @@ degrade_sortedness_to_target(df)
 table = pa.Table.from_pandas(df)
 pq.write_table(table, "example.parquet")
 # print(f"Sortedness of table generated = {get_sortedness(df)}")
+# print_pq("example.parquet")
