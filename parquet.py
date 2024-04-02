@@ -81,7 +81,8 @@ def degrade_sortedness_to_target(df: pd.DataFrame) -> None:
 target_sortedness = 0.8
 size_block = 512
 
-df = pd.DataFrame({"col": range(100)})
+float_series = pd.Series(range(1000), dtype=float)
+df = pd.DataFrame(float_series, columns=['col'])
 degrade_sortedness_to_target(df)
 table = pa.Table.from_pandas(df)
 pq.write_table(table, "example.parquet")
