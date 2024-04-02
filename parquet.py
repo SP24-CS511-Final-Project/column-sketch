@@ -49,14 +49,17 @@ def degrade_sortedness_to_target(df: pd.DataFrame) -> None:
     # swap random value pairs in the block till reach target_sortedness
     def degrade_block(block: pd.DataFrame) -> None:
         N = len(block)
+        index_values = block.index.tolist()
         # prevent infinite loop in case target can't be reach
         for _ in range(10000):
             sortedness_block = get_sortedness_block(block)
             if sortedness_block <= target_sortedness:
                 return
-            idx1 = random.randint(0, N - 1)
-            idx2 = random.randint(0, N - 1)
-            block.iloc[idx1], block.iloc[idx2] = block.iloc[idx2], block.iloc[idx1].copy()
+            idx1 = random.choice(index_values)
+            idx2 = random.choice(index_values)
+            tmp = block['col'][idx1].copy()
+            block.at[idx1, 'col'] = block.at[idx2, 'col']
+            block.at[idx2, 'col'] = tmp
 
     num_rows = len(df)
     num_full_blocks = num_rows // size_block
@@ -78,7 +81,7 @@ def degrade_sortedness_to_target(df: pd.DataFrame) -> None:
 target_sortedness = 0.8
 size_block = 512
 
-df = pd.DataFrame({"col": range(1000)})
+df = pd.DataFrame({"col": range(100)})
 degrade_sortedness_to_target(df)
 table = pa.Table.from_pandas(df)
 pq.write_table(table, "example.parquet")
