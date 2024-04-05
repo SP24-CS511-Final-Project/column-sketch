@@ -25,6 +25,7 @@ fn bench_parquet(criterion: &mut Criterion) {
     .unwrap();
 
   for input_file in files {
+    let (codes, map) = runtime.block_on(build_column_sketch(input_file)).unwrap();
     let group_name = format!("Benchmark {}", input_file);
     let mut group = criterion.benchmark_group(group_name);
     // Baseline
@@ -33,7 +34,6 @@ fn bench_parquet(criterion: &mut Criterion) {
     });
 
     group.bench_function(BenchmarkId::new("Column Sketch", 0), |b| {
-      let (codes, map) = runtime.block_on(build_column_sketch(input_file)).unwrap();
       b.iter(|| runtime.block_on(execute_column_sketch(input_file, 50.0, &codes, &map)))
     });
   }
