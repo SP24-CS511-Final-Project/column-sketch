@@ -12,6 +12,7 @@ arrow = { workspace = true }
 parquet = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
+plotters = "0.3.5"
 
 [dev-dependencies]
 rstest = { workspace = true }
@@ -23,3 +24,4 @@ harness = false
 
 [[bench]]
 name = "parquet_benchmark"
+harness = false
