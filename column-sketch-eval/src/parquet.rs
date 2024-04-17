@@ -267,9 +267,11 @@ mod tests {
   use plotters::{
     backend::BitMapBackend,
     chart::ChartBuilder,
+    coord::{combinators::IntoLinspace, ranged1d::DiscreteRanged},
     drawing::IntoDrawingArea,
+    element::PathElement,
     series::LineSeries,
-    style::{Color, IntoFont, BLACK, RED, WHITE},
+    style::{Color, IntoFont, BLACK, BLUE, RED, WHITE},
   };
 
   use super::*;
@@ -390,5 +392,72 @@ mod tests {
       .unwrap();
 
     root.present().unwrap();
+  }
+
+  #[tokio::test]
+  async fn plot() {
+    let root_area = BitMapBackend::new("../assets/endtoend.png", (1024, 768)).into_drawing_area();
+
+    root_area.fill(&WHITE).unwrap();
+
+    let root_area = root_area
+      .titled("Filter + Scan Performance", ("sans-serif", 30))
+      .unwrap();
+
+    let sortedness = [0.2f32, 0.4, 0.6, 0.8];
+    let baselines = [4.3972f32, 4.3452, 4.29, 4.15];
+    let cs = [4.3141f32, 4.3152, 4.4871, 4.4203];
+
+    let mut cc = ChartBuilder::on(&root_area)
+      .margin(5)
+      .set_all_label_area_size(50)
+      .caption("Zone Map and Column Sketch", ("sans-serif", 40))
+      .build_cartesian_2d(0.0f32..1.0, 4.0f32..4.532)
+      .unwrap();
+
+    cc.configure_mesh()
+      .x_labels(20)
+      .y_labels(10)
+      .x_desc("Sorted-ness")
+      .axis_desc_style(("sans-serif", 20, &BLACK))
+      .y_desc("Processing time (the lower the better)")
+      .disable_mesh()
+      .x_label_formatter(&|v| format!("{:.1}", v))
+      .y_label_formatter(&|v| format!("{:.1}", v))
+      .draw()
+      .unwrap();
+
+    cc.draw_series(LineSeries::new(
+      sortedness
+        .iter()
+        .take(4)
+        .zip(baselines.iter().take(4))
+        .map(|(x, y)| (*x, *y)),
+      &RED,
+    ))
+    .unwrap()
+    .label("Baseline (Parquet Zone-map)")
+    .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
+
+    cc.draw_series(LineSeries::new(
+      sortedness
+        .iter()
+        .take(4)
+        .zip(cs.iter().take(4))
+        .map(|(x, y)| (*x, *y)),
+      &BLUE,
+    ))
+    .unwrap()
+    .label("Column Sketch")
+    .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], BLUE));
+
+    cc.configure_series_labels()
+      .border_style(BLACK)
+      .draw()
+      .unwrap();
+
+    // To avoid the IO failure being ignored silently, we
+    // manually call the present function
+    root_area.present().expect("Unable to write result to file, please make sure 'plotters-doc-data' dir exists under current dir");
   }
 }
